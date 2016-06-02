@@ -18,16 +18,18 @@
 
 ## 文件关系
 1. ita.Rmd依赖于：
-
-* default_yixf.latex
-* fix_linkcolor.tex
-* itemTestAnalysis.R
+  * default_yixf.latex
+  * fix_linkcolor.tex
+  * itemTestAnalysis.R
 
 2. itemTestAnalysis.R依赖于：
-
-* test_info.txt
-* test_a1.csv
+  * test_info.txt
+  * test_a1.csv
 
 3. test_a1.csv来源于：
+  * test_a1.xls
 
-* test_a1.xls
+## 补充说明
+* 如果修改了**test_a1.csv**和**test_info.txt**这两个文件的文件名，一定要在**itemTestAnalysis.R**中进行相应的修改
+* 如果修改了**itemTestAnalysis.R**文件的文件名，一定要在**ita.Rmd**中进行相应的修改
+

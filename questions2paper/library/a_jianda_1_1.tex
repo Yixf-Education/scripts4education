@@ -1,0 +1,11 @@
+\question[10] 创建用户duser01，设置其密码为a1b2c3，UID为600，其主要组为group（group组已存在），请依次写出相应执行的命令。
+\begin{parts}
+  \part[5] 写出需要的命令。
+  \part[5] 对命令进行解释。
+\end{parts}
+
+\vspace*{5cm}
+
+\begin{solution}
+超级用户登录后，执行命令\verb|useradd -u 600 -g group duser|，在创建用户的同时指定UID和主要组；然后执行\verb|passwd duser|命令，两次输入密码即可。
+\end{solution}

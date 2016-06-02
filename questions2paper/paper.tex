@@ -1,0 +1,49 @@
+%\documentclass[printbox,marginline,answers,noindent,adobefonts]{TIJMUexam}
+
+% 试卷
+\documentclass[printbox,marginline,adobefonts]{TIJMUexam}
+% 试卷，附答案
+%\documentclass[printbox,marginline,answers,adobefonts]{TIJMUexam}
+
+\begin{document}
+
+% 装订线
+\printmlol
+
+% 试卷表头
+\maketitle
+
+% 用方框把所有题目框起来
+\begin{framed}
+
+% 试卷头部每个大题的得分表
+\defen
+
+% 每个大题的小题都从1开始重新编号
+\begin{questions}
+\input{./snippet/tiankong.tex}
+\end{questions}
+
+\begin{questions}
+\input{./snippet/xuanze.tex}
+\input{./snippet/xuanze_table.tex}
+\end{questions}
+
+\begin{questions}
+\input{./snippet/jianda.tex}
+\end{questions}
+
+% 对所有小题进行连续编号
+%\begin{questions}
+%\input{./snippet/tiankong.tex}
+%\input{./snippet/xuanze.tex}
+%\input{./snippet/xuanze_table.tex}
+%\input{./snippet/jianda.tex}
+%\end{questions}
+
+% 在试卷最后添加空白，使文本框扩展至整个页面
+%\input{./snippet/blank_tail.tex}
+
+\end{framed}
+
+\end{document}

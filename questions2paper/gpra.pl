@@ -713,7 +713,7 @@ sub paper_head {
           "\\documentclass[printbox,marginline,adobefonts]{TIJMUexam}\n\n";
     }
     print $fh "\\begin{document}\n\n";
-    print $fh "\\printmlol\n";
+    print $fh "\\printml\n";
     print $fh "\\maketitle\n";
     print $fh "\n";
     print $fh "\\begin{framed}\n";

@@ -27,8 +27,8 @@
 ### 手动由tex生成pdf
 ```bash
 # 使用latexmk
-latexmk -pdf -xelatex a_paper.tex
+latexmk -pdf -xelatex paper_a_.tex
 # 使用xelatex，可能需要运行不止一次
-xelatex a_paper.tex
+xelatex paper_a.tex
 ```
 

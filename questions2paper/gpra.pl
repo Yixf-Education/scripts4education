@@ -1,9 +1,14 @@
-#!/usr/bin/env perl 
+#!/usr/bin/env perl
+
+use v5.10.1;
+
 use strict;
 use warnings;
 
 #use utf8;
-#use Data::Dumper;
+#binmode(STDIN, ':encoding(utf8)');
+#binmode(STDOUT, ':encoding(utf8)');
+#binmode(STDERR, ':encoding(utf8)');
 
 use Getopt::Long;
 use Pod::Usage;
@@ -12,7 +17,7 @@ use File::Basename;
 use File::Spec;
 use List::Util qw(any shuffle);
 
-#default options
+# Default options
 my $help        = 0;
 my $man         = 0;
 my $backup      = 1;
@@ -22,8 +27,12 @@ my $conf_file   = "paper.conf";
 my $lib_dir     = "library";
 my $snippet_dir = "snippets";
 my $tex_file    = "paper.tex";
+my $xelatex     = 0;
+my $backup_dir  = "backups";
 
-#get options
+#my $backup_dir_snippet = "$backup_dir/snippets";
+
+# Get options
 GetOptions(
     'help|?|h'    => \$help,
     'man'         => \$man,
@@ -33,7 +42,8 @@ GetOptions(
     'config|c=s'  => \$conf_file,
     'lib|l=s'     => \$lib_dir,
     'sinppet|s=s' => \$snippet_dir,
-    'tex|t=s'     => \$tex_file
+    'tex|t=s'     => \$tex_file,
+    'xelatex|x!'  => \$xelatex
 ) or pod2usage(2);
 pod2usage(1) if $help;
 pod2usage( -exitval => 0, -verbose => 2 ) if $man;
@@ -42,149 +52,173 @@ if ($backup) {
     use Logfile::Rotate;
 }
 
-#Add the ".tex" suffix if the "$tex_file" does not have
+# Generate PDFs from existing TeXs
+if ($xelatex) {
+    my $paper = $ARGV[0] ? $ARGV[0] : "paper.tex";
+    unless ( $paper =~ /\.tex$/ ) {
+        $paper = $paper . ".tex";
+    }
+    my $paper_answer = $paper;
+    $paper_answer =~ s/\.tex/_answers.tex/;
+    &run_xelatex($paper);
+    &run_xelatex($paper_answer);
+    exit;
+}
+
+# Add the ".tex" suffix if the "$tex_file" does not have
 unless ( $tex_file =~ /\.tex$/ ) {
     $tex_file = $tex_file . ".tex";
 }
 
-#Step1: Get all configures
+# Remove the "/" suffix if the "$lib_dir" have
+$lib_dir =~ s/\/$//;
+
+# Step-1: Make sure the "library" directory exist;
+# Check the existence of "snippets" directory, make it if not
+# Check the existence of backup directory, make it if not
+&check_dir();
+
+# Step0: Get all configures
+# Step0.0: Parse the configure file
 my $conf   = Config::General->new("$conf_file");
 my %config = $conf->getall;
 
-#Step2: Make sure "library" directory exist; check the exist of "snippets" directory, make it if not
-&check_dir();
-
-#Step3: Decide which test paper is needed: paper A or paper B
+# Step0.1: Decide which class of the test paper is needed: paper A/B/...
 my $paper_ab = &decide_ab();
 
-#Get the global arrays and hash
+# Step0.2: Parse other information (tixing/zhangjie/include/exclude/distribution/...)
 $config{tixing} =~ s/\s+//g;
 my @types = split /,/, $config{tixing};
-my @chapters     = &parser_number( "chapter", $config{zhangjie} );
-my @include      = &parser_clude( $config{include} );
-my @exclude      = &parser_clude( $config{exclude} );
-my %distribution = &parser_distribution();
+my @chapters = &parse_number( "chapter", $config{zhangjie} );
+my ( %include, %exclude );
+if ( $config{include} ) {
+    %include = &parse_clude( $config{include} );
+}
+if ( $config{exclude} ) {
+    %exclude = &parse_clude( $config{exclude} );
+}
+my %distribution;
+my %tmp = &parse_distribution();
+if (%tmp) {
+    %distribution = ( %distribution, %tmp );
+}
 
-#Step4: Do some checks
+# Step1: Check the information in configure file
 &check_config_score();
 &check_config_type();
 &check_config_chapter();
 &check_config_point();
 &check_config_type_chapter();
 
-#Step5: Get the library
-#Only needed files are stored into %lib
+# Step2: Get the library
+# Step2.0: Collect questions for abjuan in the libaray
 my %lib;
 my @lib_files = <$lib_dir/*.tex>;
-my ( %lib_count_ab, %lib_count_type, %lib_count_chapter );
 foreach my $lib_file (@lib_files) {
+
+    # fileparse comes from File::Basename
     my ( $filename, $dirs, $suffix ) = fileparse( $lib_file, ".tex" );
-    my ( $ab, $type, $chapter, $seq ) = split /_/, $filename;
-    if ( lc($ab) eq $paper_ab ) {
-        if ( exists $distribution{$type} ) {
-            if ( exists $distribution{$type}->{$chapter} ) {
-                $lib_count_ab{ lc($ab) }++;
-                $lib_count_type{ lc($ab) }->{$type}++;
-                $lib_count_chapter{ lc($ab) }->{$type}->{$chapter}++;
-                $lib{$filename} = $lib_file;
-            }
-        }
-        else {
-            if ( List::Util::any { $_ eq $type } @types ) {
-                $lib_count_ab{ lc($ab) }++;
-                $lib_count_type{ lc($ab) }->{$type}++;
-                $lib{$filename} = $lib_file;
-            }
-        }
-    }
+    $lib{$filename} = 1;
 }
 
-#Clect warnings in modify_lib
-my @warnings;
-my %exclude_fullname = &modify_lib("exclude");
+# Step2.1: Only needed files are stored into %lib
+# Keep questions for '$paper_ab', and delete others
+# Keep questions for needed types and chapters, and delete others
+&need_lib();
 
-#Do some more checks
-#Check for the existence and enough questions in the library, this check must is between '&modify_lib("exclude")' and '&modify_lib("include")'
-#This check exclude excluded questions
+# Step2.2: Exclude the questions specified in the configure file
+# Besides, collect warnings in modify_lib
+my @warnings;
+&modify_lib("exclude");
+
+# Step2.3: Exclude the questions specified in 'include' in the configure file
+# those question should be included back into '%lib' later
+&modify_lib("include");
+
+# Step2.4: Do some more checks
+# Check for the existence and enough questions in the library
+# NOT NEED NOW: this check is must between '&modify_lib("exclude")' and '&modify_lib("include")'
+# This check exclude excluded questions (configured in include and exclude in configure file) because they have been deleted from the library
 &check_lib_exist();
 &check_lib_enough();
-my %include_fullname = &modify_lib("include");
 
-#Step6: Shuffle the questions in the library to make them random
-my @lib_shuffle = List::Util::shuffle( sort keys %lib );
-
-#Step7: Select questions randomly
-my %questions;
-my %count;
-
-#Firstly, exclude included questions
+# Step3: Select questions randomly from the library
+# Step3.0: This library has excluded the questions which should be included
+my @questions_short;
 foreach my $type (@types) {
-    if ( exists $distribution{$type} ) {
-        foreach my $chapter ( sort keys $distribution{$type} ) {
-            $count{$type}->{$chapter} = $distribution{$type}->{$chapter};
-            if ( exists $include_fullname{$type}->{$chapter} ) {
-                $count{$type}->{$chapter} -=
-                  scalar( @{ $include_fullname{$type}->{$chapter} } );
+    if ( %distribution
+        && ( List::Util::any { $_ =~ /$type/ } keys %distribution ) )
+    {
+        foreach my $key_d ( sort keys %distribution ) {
+            my ( $ab, $t, $c ) = split /_/, $key_d;
+            if ( $t eq $type ) {
+                my %lib_new;
+                foreach my $key_l ( sort keys %lib ) {
+                    if ( $key_l =~ /$key_d/ ) {
+                        $lib_new{$key_l} = 1;
+                    }
+                }
+                my @tc_shuffle = List::Util::shuffle( sort keys %lib_new );
+                for ( my $i = 0 ; $i < $distribution{$key_d} ; $i++ ) {
+                    push @questions_short, $tc_shuffle[$i];
+                }
             }
         }
     }
     else {
-        $count{$type} = $config{$type}->{tishu};
-        if ( exists $include_fullname{$type} ) {
-            $count{$type} -= scalar( @{ $include_fullname{$type} } );
-        }
-    }
-}
-
-#Secondly, get the other questions
-foreach my $filename (@lib_shuffle) {
-    my ( $ab, $type, $chapter, $seq ) = split /_/, $filename;
-    if ( exists $distribution{$type} ) {
-        if (   ( exists $count{$type}->{$chapter} )
-            && ( $count{$type}->{$chapter} > 0 ) )
-        {
-            push @{ $questions{$type} }, $lib{$filename};
-            $count{$type}->{$chapter} -= 1;
-        }
-    }
-    else {
-        if ( $count{$type} > 0 ) {
-            push @{ $questions{$type} }, $lib{$filename};
-            $count{$type} -= 1;
-        }
-    }
-}
-
-#Finally, add included questions back
-if ( @include > 0 ) {
-    foreach my $type ( sort keys %include_fullname ) {
-        if ( exists $distribution{$type} ) {
-            foreach my $chapter ( sort keys $include_fullname{$type} ) {
-                push @{ $questions{$type} },
-                  @{ $include_fullname{$type}->{$chapter} };
+        my %lib_new;
+        foreach my $key ( sort keys %lib ) {
+            if ( $key =~ /$type/ ) {
+                $lib_new{$key} = 1;
             }
         }
-        else {
-            push @{ $questions{$type} }, @{ $include_fullname{$type} };
+        my @tcs_shuffle = List::Util::shuffle( sort keys %lib_new );
+        for ( my $i = 0 ; $i < $config{$type}->{tishu} ; $i++ ) {
+            push @questions_short, $tcs_shuffle[$i];
         }
     }
 }
 
-#Step 8: Generate the TeX configure file
-#The name can not be changed, else you know how to do
+# Step3.1: Add included questions back
+if (%include) {
+    foreach my $question ( sort keys %include ) {
+        push @questions_short, $question;
+    }
+}
+
+# Step4: Get the full path for questions
+my @questions_full;
+foreach my $question (@questions_short) {
+    push @questions_full,
+      File::Spec->catfile( "$lib_dir", "$question" . ".tex" );
+}
+
+# Step5: Classify questions according to question types
+my %questions_type;
+foreach my $type (@types) {
+    foreach my $q (@questions_full) {
+        if ( $q =~ /$type\_/ ) {
+            push @{ $questions_type{$type} }, $q;
+        }
+    }
+}
+
+# Step6: Generate the TeX configure file
+# The name should not be changed, else you know how to do
 my $tex_cfg_file = "TIJMUexam.cfg";
 &generate_tex_cfg();
 
-#Step 9: Generate the snippets for each questions type
+# Step7: Generate the snippets for each questions type
+my @questions;
 foreach my $type (@types) {
-    my @question = sort @{ $questions{$type} };
-    &generate_snippet( $type, \@question );
+    @questions = sort @{ $questions_type{$type} };
+    &generate_snippet( $type, \@questions );
 }
 
-#Step 10: Generate the final TeX and PDF files
+# Step8: Generate the final TeX and PDF files
 &generate_paper();
 
-#Warn user for the warnings
+# Step9: Warn user for the warnings
 if ( @warnings > 0 ) {
     print STDERR "\n\n";
     foreach my $warn (@warnings) {
@@ -203,44 +237,59 @@ sub check_dir {
     unless ( -e $lib_dir ) {
         die "For library: the directory '$lib_dir' does not exist!\n";
     }
+
+    #if ($backup) {
+    #unless ( -e $backup_dir ) {
+    #mkdir "$backup_dir", 0755
+    #or die "$0: failed to make directory '$backup_dir': $!\n";
+    #}
+    #unless ( -e $backup_dir_snippet ) {
+    #mkdir "$backup_dir_snippet", 0755
+    #or die "$0: failed to make directory '$backup_dir_snippet': $!\n";
+    #}
+    #}
 }
 
 sub decide_ab {
     my $ab;
-    if ( exists $config{abjuan} ) {
-        if ( !( defined $a_or_b ) ) {
-            if ( $config{abjuan} =~ /(\w)/ ) {
-                $ab = lc($1);
-            }
-            else {
-                die
-"For a_or_b (abjuan): Please check its format in the configure file: $conf_file!\n";
-            }
-        }
-        else {
-            $ab = lc($a_or_b);
-        }
+    if ( defined $a_or_b ) {
+        $ab = lc($a_or_b);
+        return $ab;
     }
-    else {
-        if ( defined $a_or_b ) {
-            $ab = lc($a_or_b);
+    elsif ( exists $config{abjuan} ) {
+        if ( $config{abjuan} =~ /(\w)/ ) {
+            $ab = lc($1);
+            return $ab;
         }
         else {
             die
-"A or B, which test paper do you want? Please tell me in the '$conf_file' configure file, or by the '-a|--ab' option!\n";
+"For a_or_b (abjuan): Please check its format in the configure file: $conf_file!\n";
         }
     }
-    return $ab;
+    else {
+        die
+"A or B, which test paper do you want? Please tell me in the '$conf_file' configure file, or by the '-a|--ab' option!\n";
+    }
 }
 
-#Parse numbers in "1..3,5,7..9,11" format
-#Here is the chapters (zhangjie, 章节) numbers
-sub parser_number {
+# Parse numbers in "1,2,3" or "1..3" or "1..3,5,7..9,11" format
+# Here is the chapters (zhangjie, 章节) numbers
+sub parse_number {
     my ( $string, $number_string ) = @_;
+    my @numbers;
     $number_string =~ s/\s+//g;
-    if ( $number_string =~ /^(\d|,|\.{2})+$/ ) {
-        my @numbers;
-        my @tmp = split /,/, $number_string;
+    if ( $number_string =~ /^\d+$/ ) {
+        push @numbers, $number_string;
+        return @numbers;
+    }
+    elsif ( $number_string =~ /^\d+((,|\.{2})(\d+)?)+\d+$/ ) {
+        my @tmp;
+        if ( $number_string =~ /,/ ) {
+            @tmp = split /,/, $number_string;
+        }
+        else {
+            $tmp[0] = $number_string;
+        }
         foreach my $tmp (@tmp) {
             if ( $tmp =~ /^(\d+)\.\.(\d+)$/ ) {
                 push @numbers, $1 .. $2;
@@ -257,42 +306,50 @@ sub parser_number {
     }
 }
 
-#Parse the [in|ex]clude in the configure file, save them into array
-sub parser_clude {
+# Parse the [in|ex]clude in the configure file, save them into hash
+sub parse_clude {
     my $ref = shift(@_);
-    my @clude;
+    my %clude;
     if ( ref $ref eq "ARRAY" ) {
         foreach my $question ( @{$ref} ) {
-            $question =~ s/\.tex$//;
-            push @clude, $question;
+            my %tmp = &filename_to_hash($question);
+            %clude = ( %clude, %tmp );
         }
     }
     else {
-        $ref =~ s/\.tex$//;
-        push @clude, $ref;
+        my %tmp = &filename_to_hash($ref);
+        %clude = ( %clude, %tmp );
     }
-    return @clude;
+    return %clude;
 }
 
-#Parse the question distribution in chapters for each question type
-sub parser_distribution {
+sub filename_to_hash {
+    my $filename = shift(@_);
+    $filename =~ s/\.tex$//;
+    my @fields = split /_/, $filename;
+    my %fn;
+    if ( lc( $fields[0] ) eq $paper_ab ) {
+        my $key = join "_", @fields[ 0 .. 3 ];
+        $fn{$key} = 1;
+        return %fn;
+    }
+}
+
+# Parse the question distribution in chapters for each question type
+sub parse_distribution {
     my %hash;
-    my $counter = 0;
     foreach my $type (@types) {
         foreach my $chapter ( sort keys $config{$type} ) {
             if ( $chapter =~ /^\d+$/ ) {
-                $counter++;
-                $hash{$type}->{$chapter} = $config{$type}->{$chapter};
+                my $key = join "_", $paper_ab, $type, $chapter;
+                $hash{$key} = $config{$type}->{$chapter};
             }
-        }
-        unless ( $counter > 0 ) {
-            delete $hash{$type};
         }
     }
     return %hash;
 }
 
-#Check total score of the test paper, which should be equal to the sum of points for each question type (zongfen.testPaper=sum(zongfen.types))
+# Check total score of the test paper, which should be equal to the sum of points for each question type (zongfen.testPaper=sum(zongfen.types))
 sub check_config_score {
     my $sum;
     foreach my $type (@types) {
@@ -304,7 +361,7 @@ sub check_config_score {
     }
 }
 
-#Check the question types (tixing, 题型)
+# Check the question types (tixing, 题型): each question type should have configure details
 sub check_config_type {
     foreach my $type (@types) {
         unless ( exists $config{$type} ) {
@@ -314,7 +371,7 @@ sub check_config_type {
     }
 }
 
-#Check chapters (zhangjie, 章节)
+# Check chapters (zhangjie, 章节): the chapters in configure details for each question type should be in chapters defined in the configure file
 sub check_config_chapter {
     foreach my $type (@types) {
         foreach my $key ( sort keys $config{$type} ) {
@@ -328,19 +385,19 @@ sub check_config_chapter {
     }
 }
 
-#Check points (zongfen=fen*tishu, 总分=小题分*题目数) for each question type
+# Check points (zongfen=fen*tishu, 总分=小题分*题目数) for each question type
 sub check_config_point {
     foreach my $type (@types) {
         unless ( $config{$type}->{zongfen} ==
             $config{$type}->{fen} * $config{$type}->{tishu} )
         {
             die
-"For '$type': The result, point for each question times question number, does not equal to total points.\n";
+"For '$type': The result (point for each question times question number) does not equal to total points.\n";
         }
     }
 }
 
-#Check the question number (xiaotishu, 小题数) for each question type
+# Check the question number (xiaotishu, 小题数) for each question type
 sub check_config_type_chapter {
     foreach my $type (@types) {
         my $sum;
@@ -358,105 +415,118 @@ sub check_config_type_chapter {
     }
 }
 
-#Exclude the items configured in 'include' and 'exclude', and get the full path for each question
-sub modify_lib {
-    my $string = shift(@_);
-    my @clude;
-    my %hash;
-    if ( $string eq "include" ) {
-        @clude = @include;
-    }
-    if ( $string eq "exclude" ) {
-        @clude = @exclude;
-    }
-    if ( @clude > 0 ) {
-        foreach my $question (@clude) {
-            if ( exists $lib{$question} ) {
-                delete $lib{$question};
-                my ( $ab, $type, $chapter, $seq ) = split /_/, $question;
-                my $clude_fullname =
-                  File::Spec->catfile( "$lib_dir", "$question" . ".tex" );
-                if ( exists $distribution{$type} ) {
-                    push @{ $hash{$type}->{$chapter} }, $clude_fullname;
-                }
-                else {
-                    push @{ $hash{$type} }, $clude_fullname;
-                }
-            }
-            else {
-#warn "The $ti configured in '$string' does not exist in the library. Please check it!\n";
-                push @warnings,
-"The $question configured in '$string' does not exist in the library. Please check it!\n";
-            }
+# Keep needed questions in the library, and delete others
+sub need_lib {
+    foreach my $file ( sort keys %lib ) {
+        $file = lc($file);
+        unless ( $file =~ /^$paper_ab/ ) {
+            delete $lib{$file};
+        }
+        my ( $ab, $t, $c, $s ) = split /_/, $file;
+        unless ( List::Util::any { $_ eq $t } @types ) {
+            delete $lib{$file};
+        }
+        unless ( List::Util::any { $_ eq $c } @chapters ) {
+            delete $lib{$file};
         }
     }
-    return %hash;
 }
 
-sub check_lib_exist {
-    unless ( exists $lib_count_ab{$paper_ab} ) {
-        die "There is no library for paper type '$paper_ab', exit!\n";
-    }
-    foreach my $type (@types) {
-        unless ( exists $lib_count_type{$paper_ab}->{$type} ) {
-            die
-"There is no library for question type '$type' of paper type '$paper_ab', exit!\n";
+# Exclude the questions configured in 'include'/'exclude'
+# For 'include', should modify the distribution
+sub modify_lib {
+    my $string = shift(@_);
+    my %clude;
+    if ( $string eq "include" ) {
+        %clude = %include;
+        foreach my $key ( sort keys %clude ) {
+            my ( $ab, $t, $c, $s ) = split /_/, $key;
+            $config{$t}->{tishu} -= 1;
+            my $k = join "_", $ab, $t, $c;
+            if ( exists $distribution{$k} ) {
+                $distribution{$k} -= 1;
+            }
         }
-        if ( exists $lib_count_type{$paper_ab}->{$type} ) {
-            if ( exists $distribution{$type} ) {
-                foreach my $chapter ( sort keys $distribution{$type} ) {
-                    unless (
-                        exists $lib_count_chapter{$paper_ab}->{$type}
-                        ->{$chapter} )
-                    {
+    }
+    if ( $string eq "exclude" ) {
+        %clude = %exclude;
+    }
+    if (%clude) {
+        foreach my $key ( sort keys %clude ) {
+            if ( exists $lib{$key} ) {
+                delete $lib{$key};
+            }
+            else {
+                push @warnings,
+"The $key configured in '$string' does not exist in the library. Please check it!\n";
+            }
+        }
+    }
+}
+
+# Check library existence for question types and chapters
+sub check_lib_exist {
+    if (%lib) {
+        my @tmp = sort keys %lib;
+        my %type_lib;
+        foreach my $tc (@tmp) {
+            my ( $ab, $t, $c, $s ) = split /_/, $tc;
+            $type_lib{$t} = 1;
+        }
+        foreach my $type (@types) {
+            unless ( exists $type_lib{$type} ) {
+                die
+"There is no library for question type '$type' of paper type '$paper_ab', exit!\n";
+            }
+            if (%distribution) {
+                foreach my $tc_d ( sort keys %distribution ) {
+                    my ( $ab, $t, $c ) = split /_/, $tc_d;
+                    unless ( List::Util::any { $_ =~ /^$tc_d/ } keys %lib ) {
                         die
-"There is no library for 'chapter $chapter' of question type '$type' of paper type '$paper_ab', exit!\n";
+"There is no library for 'chapter $c' of question type '$t' of paper type '$paper_ab', exit!\n";
                     }
                 }
             }
         }
     }
+    else {
+        die "There is no library for paper type '$paper_ab', exit!\n";
+    }
 }
 
+# Check library number for question types and chapters
 sub check_lib_enough {
-    my ( %number_type, %number_type_chapter );
-    foreach my $filename ( sort keys %lib ) {
-        my ( $ab, $type, $chapter, $seq ) = split /_/, $filename;
-
-#Important: This line is needed, otherwise new key(s) will be added to %distribution
-        if ( exists $distribution{$type} ) {
-            if ( exists $distribution{$type}->{$chapter} ) {
-                $number_type_chapter{$type}->{$chapter}++;
-            }
-        }
-        else {
-            $number_type{$type}++;
-        }
+    my @tmp = sort keys %lib;
+    my %type_lib;
+    foreach my $tc (@tmp) {
+        my ( $ab, $t, $c, $s ) = split /_/, $tc;
+        $type_lib{$t}++;
     }
     foreach my $type (@types) {
-        if ( exists $distribution{$type} ) {
-            foreach my $chapter ( sort keys $distribution{$type} ) {
-                unless ( exists $number_type_chapter{$type}->{$chapter} ) {
-                    $number_type_chapter{$type}->{$chapter} = 0;
-                }
-                unless ( $number_type_chapter{$type}->{$chapter} >=
-                    $distribution{$type}->{$chapter} )
-                {
-                    die
-"For '$type': There is not enough questions of 'chapter $chapter' in the library, own($number_type_chapter{$type}->{$chapter}) < need($distribution{$type}->{$chapter})!\n";
-                }
-            }
+        unless ( $type_lib{$type} >= $config{$type}->{tishu} ) {
+            die
+"For '$type': There is not enough questions in the library, own($type_lib{$type}) < need($config{$type}->{tishu})!\n";
         }
-        else {
-            unless ( $number_type{$type} >= $config{$type}->{tishu} ) {
+    }
+    if (%distribution) {
+        my %lib_tmp;
+        foreach my $key ( sort keys %lib ) {
+            my ( $ab, $t, $c, $s ) = split /_/, $key;
+            my $key_new = join "_", $ab, $t, $c;
+            $lib_tmp{$key_new}++;
+        }
+        foreach my $tc_d ( sort keys %distribution ) {
+            my ( $ab, $t, $c ) = split /_/, $tc_d;
+            my $lib_tmp_count = $lib_tmp{$tc_d};
+            unless ( $lib_tmp_count >= $distribution{$tc_d} ) {
                 die
-"For '$type': There is not enough questions in the library, own($number_type{$type}) < need($config{$type}->{tishu})!\n";
+"For '$t': There is not enough questions of 'chapter $c' in the library, own($lib_tmp_count) < need($distribution{$tc_d})!\n";
             }
         }
     }
 }
 
-#Generate the TeX configure file (TIJMUexam.cls)
+# Generate the TeX configure file (TIJMUexam.cls)
 sub generate_tex_cfg {
     my $O_file_name = $tex_cfg_file;
     open my $O, '>', $O_file_name
@@ -513,16 +583,7 @@ sub generate_snippet {
     close $O or warn "$0 : failed to close output file '$O_file_type' : $!\n";
 }
 
-#Backup old files
-sub rotate_file {
-    my $file = shift(@_);
-    if ( -e $file ) {
-        my $log = new Logfile::Rotate( File => "$file" );
-        $log->rotate();
-    }
-}
-
-#Draw the answer table for the question type choice - single or multiple (xuanze - danxuan & duoxuan)
+# Draw the answer table for the question type choice - single or multiple (xuanze - danxuan & duoxuan)
 sub draw_choice_table {
     my ( $type, $fh ) = @_;
     my $step;
@@ -575,10 +636,13 @@ sub draw_choice_table {
     print $fh "\\end{tabularx}\n";
 }
 
-#Generate the final TeX files (with and without answers) for the test paper
-#Add the A/B flag to the start of TeX files
+# Generate the final TeX files (with and without answers) for the test paper
+# Add the A/B flag to the start of TeX files
 sub generate_paper {
-    my $fo_paper        = "$paper_ab" . "_" . "$tex_file";
+    my $fo_paper = $tex_file;
+    $fo_paper =~ s/\./_${paper_ab}./;
+
+    #my $fo_paper        = "$paper_ab" . "_" . "$tex_file";
     my $fo_paper_answer = $fo_paper;
     $fo_paper_answer =~ s/\.tex/_answers.tex/;
     if ($backup) {
@@ -603,8 +667,6 @@ sub generate_paper {
     print $OP "\\begin{questions}\n\n";
     print $OPA "\\begin{questions}\n\n";
     foreach my $item (@items) {
-
-        #if ( $bn =~ /^$paper_ab/ ) {
         &paper_body( $OP,  $item );
         &paper_body( $OPA, $item );
 
@@ -616,8 +678,6 @@ sub generate_paper {
             print $OP "\\input{$tables{$type}}\n";
             print $OP "\n";
         }
-
-        #}
     }
     print $OP "\\end{questions}\n\n";
     print $OPA "\\end{questions}\n\n";
@@ -632,7 +692,16 @@ sub generate_paper {
     }
 }
 
-#Write the head for final TeX file
+#Backup old files
+sub rotate_file {
+    my ($file) = shift(@_);
+    if ( -e $file ) {
+        my $log = new Logfile::Rotate( File => "$file", Dir => "$backup_dir" );
+        $log->rotate();
+    }
+}
+
+# Write the head for final TeX file
 sub paper_head {
     my ( $fh, $answer ) = @_;
     if ($answer) {
@@ -652,28 +721,25 @@ sub paper_head {
     print $fh "\n";
 }
 
-#Write the body (each question type) for final TeX file
+# Write the body (each question type) for final TeX file
 sub paper_body {
     my ( $fh, $question ) = @_;
-
-    #print $fh "\\begin{questions}\n";
     print $fh "\\input{$question}\n";
-
-    #print $fh "\\end{questions}\n";
     print $fh "\n";
 }
 
-#Write the tail for final TeX file
+# Write the tail for final TeX file
 sub paper_tail {
     my ($fh) = shift(@_);
-    print $fh "\\vspace{0.8\\textheight plus 0.2\\textheight minus 0.8\\textheight}\n";
+    print $fh
+      "\\vspace{0.8\\textheight plus 0.2\\textheight minus 0.8\\textheight}\n";
     print $fh "\n";
     print $fh "\\end{framed}\n";
     print $fh "\n";
     print $fh "\\end{document}\n";
 }
 
-#Generate the final PDF files for the test paper
+# Generate the final PDF files for the test paper
 sub run_xelatex {
     my $file = shift(@_);
     my $log  = $file;
@@ -691,8 +757,8 @@ sub run_xelatex {
 
 __END__
 
-
  
+
 =head1 NAME
  
 gpra.pl - Generate test paper randomly and automatically
@@ -700,6 +766,8 @@ gpra.pl - Generate test paper randomly and automatically
 =head1 SYNOPSIS
  
 gpra.pl [options]
+
+gpra.pl -x <TeX File>
  
  Options:
    -h                help message
@@ -711,6 +779,7 @@ gpra.pl [options]
    -l [library]      library directory 
    -s [snippets]     snippets directory 
    -t [paper.tex]    final TeX file
+   -x                run xelatex
  
 =head1 DESCRIPTION
 
@@ -758,7 +827,7 @@ Prints the manual page and exits.
 
 =item B<-b, --bak> B<[YES]>
 
-Backup previous TeX files of snippets and papers.
+Backup previous TeX files of snippets and papers (to 'backups' folder).
 
 B<-nob, --no-bak> can be used to set it to B<NO>, when you do not want the backup, or you do not have Gzip, or the module Logfile::Rotate is not installed, ...
  
@@ -766,7 +835,7 @@ B<-nob, --no-bak> can be used to set it to B<NO>, when you do not want the backu
 
 Generate the final PDF files for test papers.
 
-B<-nop, --no-pdf> can be used to set it to B<NO>, when you do not want the PDF, or you do not have XeLaTeX, ...
+B<-nop, --no-pdf> can be used to set it to B<NO>, when you do not want the PDF, or you do not have XeLaTeX, ... But you can generate PDFs using B<-x, --xelatex> option when you need them (since V3).
  
 =item B<-a, --ab> B<[undef]>
 
@@ -790,12 +859,28 @@ Directory to store the snippets for each question type.
 
 The TeX file name for final test paper.
  
+=item B<-x, --xelatex> B<[NO]>
+
+Run XeLaTeX on the existing TeX files to get the final PDFs.
+ 
 =back
  
 =head1 VERSION
  
-V1 (20141214)
+V3 (20150628)
+ Rewrite the whole script
+ Add -x(--xelatex) option
+ Files will be backuped to 'backups' folder
+ Fix bugs:
+   chapters configured in file is useless
+   warnings when include/exclude is not configured
+   some bugs I do not know ...
+ Known bugs:
+   only snippets will be backuped to specified folder, the main TeX files will not ...
+
 V2 (20141215)
+
+V1 (20141214)
 
 =head1 AUTHOR
 

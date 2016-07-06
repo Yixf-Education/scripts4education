@@ -61,9 +61,9 @@ test.tmp <- readTest()
 
 # Format student grade with more information
 formatGrade <- function(df=test.tmp){
-  percent.chapter <- df %>% select(item.chapter, chapter.score, student.id, student.mark) %>% group_by(student.id, item.chapter) %>% mutate(chapter.percent=sum(student.mark)/chapter.score*100) %>% select(student.id, item.chapter, chapter.percent) %>% distinct() %>% ungroup() %>% spread(item.chapter, chapter.percent)
-  percent.type <- df %>% select(item.type, type.score, student.id, student.mark) %>% group_by(student.id, item.type) %>% mutate(type.percent=sum(student.mark)/type.score*100) %>% select(student.id, item.type, type.percent) %>% distinct() %>% ungroup() %>% spread(item.type, type.percent)
-  grade <- df %>% select(student.id, student.name, student.grade, student.zscore) %>% distinct()
+  percent.chapter <- df %>% select(item.chapter, chapter.score, student.id, student.mark) %>% group_by(student.id, item.chapter) %>% mutate(chapter.percent=sum(student.mark)/chapter.score*100) %>% select(student.id, item.chapter, chapter.percent) %>% distinct(.keep_all=TRUE) %>% ungroup() %>% spread(item.chapter, chapter.percent)
+  percent.type <- df %>% select(item.type, type.score, student.id, student.mark) %>% group_by(student.id, item.type) %>% mutate(type.percent=sum(student.mark)/type.score*100) %>% select(student.id, item.type, type.percent) %>% distinct(.keep_all=TRUE) %>% ungroup() %>% spread(item.type, type.percent)
+  grade <- df %>% select(student.id, student.name, student.grade, student.zscore) %>% distinct(.keep_all=TRUE)
   grade <- inner_join(percent.chapter, grade, by="student.id") %>% inner_join(percent.type, by="student.id")
   grade <- grade[ , c(1, c(1,2,3)+ncol(percent.chapter), seq(1,ncol(percent.chapter)-1)+1, seq(1,ncol(percent.type)-1)+ncol(percent.chapter)+3)]
   grade <- grade %>% arrange(desc(student.grade))
@@ -97,7 +97,7 @@ Mode <- function(x) {
 summaryGrade <- function(dfg=grade, dft=test){
   number.student <- nrow(dfg)
   number.item <- dft %>% select(item.id) %>% summarise(y=n_distinct(item.id)) %>% .$y
-  grade.total <- dft %>% select(item.id, item.mark) %>% distinct() %>% summarise(y=sum(item.mark)) %>% .$y
+  grade.total <- dft %>% select(item.id, item.mark) %>% distinct(.keep_all=TRUE) %>% summarise(y=sum(item.mark)) %>% .$y
   gs <- dfg %>% summarise(gmean=mean(student.grade), gsd=sd(student.grade), gvar=var(student.grade), gmedian=median(student.grade), gmode=Mode(student.grade), gmax=max(student.grade), gmin=min(student.grade), grange=diff(range(student.grade)), gskew=skewness(student.grade), gkurt=kurtosis(student.grade))
   gs$hm <- dfg %>% filter(grade.group=="H") %>% summarise(y=mean(student.grade)) %>% .$y
   gs$mm <- dfg %>% filter(grade.group=="M") %>% summarise(y=mean(student.grade)) %>% .$y
@@ -326,7 +326,7 @@ analyzeChoice <- function(df=sc, file="single_choice_stats.txt"){
     pf.b <- df %>% group_by(item.id, pass.fail) %>% summarise(num.pass=n()) %>% spread(pass.fail, num.pass) %>% rename(num.F=F, num.P=P) %>% mutate(num.total=num.F+num.P)
     pf <- inner_join(pf.a, pf.b, by="item.id")
     pf <- pf %>% mutate(p=num.P/num.total, q=1-p)
-    sd.grade <- df %>% group_by(student.id) %>% distinct() %>% ungroup() %>% summarise(y=sd(student.grade)) %>% .$y
+    sd.grade <- df %>% group_by(student.id) %>% distinct(.keep_all=TRUE) %>% ungroup() %>% summarise(y=sd(student.grade)) %>% .$y
     ri <- pf %>% mutate(choice.RPB=((mean.P-mean.F)/sd.grade)*sqrt(p*q), choice.IRI=choice.RPB*sqrt(p*q)) %>% select(item.id, choice.RPB, choice.IRI)
     ri$item.id <- as.character(ri$item.id)
     return(ri)

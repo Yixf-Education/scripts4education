@@ -131,6 +131,12 @@ foreach my $lib_file (@lib_files) {
 my @warnings;
 &modify_lib("exclude");
 
+# Step6: Generate the TeX configure file
+# This step MUST be before Step 2.3
+# The name should not be changed, unless you know how to do
+my $tex_cfg_file = "TIJMUexam.cfg";
+&generate_tex_cfg();
+
 # Step2.3: Exclude the questions specified in 'include' in the configure file
 # those question should be included back into '%lib' later
 &modify_lib("include");
@@ -202,11 +208,6 @@ foreach my $type (@types) {
         }
     }
 }
-
-# Step6: Generate the TeX configure file
-# The name should not be changed, else you know how to do
-my $tex_cfg_file = "TIJMUexam.cfg";
-&generate_tex_cfg();
 
 # Step7: Generate the snippets for each questions type
 my @questions;

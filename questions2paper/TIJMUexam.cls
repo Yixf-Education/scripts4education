@@ -77,9 +77,9 @@
     %\RequirePackage[paper=a4paper,hmargin={3cm,2cm},vmargin={2cm,2cm},
     %marginparsep=0.5cm,hoffset=0cm,voffset=0cm,footnotesep=0.5cm,
     %headsep=0.5cm,twoside]{geometry}
-    \RequirePackage[paper=a4paper,hmargin={3cm,2cm},vmargin={2cm,2cm},
-    marginparsep=0.5cm,hoffset=0cm,voffset=0cm,footnotesep=0.5cm,
-    headsep=0.5cm]{geometry}
+    \RequirePackage[paper=a4paper,hmargin={1.5cm,0.5cm},vmargin={1cm,1cm},
+    marginparsep=0.2cm,hoffset=0cm,voffset=0.4cm,footnotesep=0cm,footskip=0.2cm,
+    headsep=0cm]{geometry}
   \fi
 \else
   \if@sixteenkpaper
@@ -263,14 +263,15 @@
 \newcommand{\biaoti}[1]{\begin{spacing}{1.5}\begin{center}\Large \textbf{#1} \end{center}\end{spacing}}
 \renewcommand{\maketitle}{
 %缩小添加密封线后试卷头部的大空白
-%  \vspace{-1cm}
+  \vspace{-1cm}
   \biaoti{\@xuexiao \@yearb \ -- \@yeare 学年 \@xueqi \ 学期\\
   \underline{\@zhuanye} 专业 \underline{\@kecheng} 课程考试试卷(\@abjuan)  (\@kaibijuan)}
+  \bigskip
   \kaoshengxinxi
 %  \thispagestyle{firststyle}
 }
 %\newcommand\kaoshengxinxi{\indent 专业：\underline{\hspace{15ex}} \  班级：\underline{\hspace{14ex}} \  姓名：\underline{\hspace{14ex}} \  学号：\underline{\hspace{15ex}} \vspace*{-0.4cm}}
-\newcommand\kaoshengxinxi{\indent 专业：\underline{\hspace{15ex}} \  班级：\underline{\hspace{14ex}} \  姓名：\underline{\hspace{14ex}} \  学号：\underline{\hspace{15ex}} }
+\newcommand\kaoshengxinxi{\qquad \qquad 专业：\underline{\hspace{15ex}} \  班级：\underline{\hspace{14ex}} \  姓名：\underline{\hspace{14ex}} \  学号：\underline{\hspace{15ex}} }
 
 \newcommand\mininotice{
   \bigskip
@@ -294,14 +295,14 @@
 \setlength\@boxwidth{0ex}
 \newcommand\defen{
   %\bigskip
-  \indent
+  \qquad \qquad
   \hspace{-0.5cm}
   \begin{minipage}{\@boxwidth}
   \heiti
   %\begin{tabularx}{13cm}{@{\extracolsep{\fill}}|c|c|c|c|c|c|c|c|c|c|c|c|X|}
-  \begin{tabularx}{14.5cm}{|p{0.8cm}|X|X|X|X|X|X|X|X|X|X|p{0.9cm}|p{1.9cm}|}
+  \begin{tabularx}{14.6cm}{|p{0.8cm}|X|X|X|X|X|X|X|X|X|X|p{0.9cm}|p{1.9cm}|}
   \hline
-  题号 & 一  & 二 & 三 & 四 & 五 & 六 & 七 & 八 & 九 & 十 & 总\ 分 & 核查人签字\\
+  题号 & 一 & 二 & 三 & 四 & 五 & 六 & 七 & 八 & 九 & 十 & 总\ 分 & 核查人签字\\
   \hline
   得分 &  &  &  &  &  &  &  &  &  &  &  & \\
   \hline

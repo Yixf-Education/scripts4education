@@ -47,6 +47,7 @@
 \RequirePackage{pstricks,pst-plot,xcolor,graphicx}
 \newcolumntype{Y}{>{\centering\arraybackslash}X}
 %\RequirePackage{mdframed}
+\RequirePackage{framed}
 
 \RequirePackage{listings}
 \lstset{
@@ -148,7 +149,7 @@
         \penalty 0
         %\vspace*{5cm}
         %\vfill
-%        \begin{minipage}[c][0.4\textheight][s]{0.95\textwidth} 
+%        \begin{minipage}[c][0.4\textheight][s]{0.95\textwidth}
 %        \vfill
 %        \if@printbox \if@houpingfen \houpingfen \fi \fi
 %        \end{minipage}
@@ -280,7 +281,7 @@
   \end{center}
 }
 \newcommand{\notice}{
-  \vspace*{0.5cm}  
+  \vspace*{0.5cm}
   \begin{flushleft}
   \heiti 注意事项： \songti
   \begin{enumerate}

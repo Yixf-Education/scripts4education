@@ -340,7 +340,7 @@ sub filename_to_hash {
 sub parse_distribution {
     my %hash;
     foreach my $type (@types) {
-        foreach my $chapter ( sort keys $config{$type} ) {
+        foreach my $chapter ( sort keys %{ $config{$type} } ) {
             if ( $chapter =~ /^\d+$/ ) {
                 my $key = join "_", $paper_ab, $type, $chapter;
                 $hash{$key} = $config{$type}->{$chapter};
@@ -375,7 +375,7 @@ sub check_config_type {
 # Check chapters (zhangjie, 章节): the chapters in configure details for each question type should be in chapters defined in the configure file
 sub check_config_chapter {
     foreach my $type (@types) {
-        foreach my $key ( sort keys $config{$type} ) {
+        foreach my $key ( sort keys %{ $config{$type} } ) {
             if ( $key =~ /^\d+$/ ) {
                 unless ( List::Util::any { $_ == $key } @chapters ) {
                     die
@@ -402,7 +402,7 @@ sub check_config_point {
 sub check_config_type_chapter {
     foreach my $type (@types) {
         my $sum;
-        foreach my $key ( sort keys $config{$type} ) {
+        foreach my $key ( sort keys %{ $config{$type} } ) {
             if ( $key =~ /^\d+$/ ) {
                 $sum += $config{$type}->{$key};
             }
